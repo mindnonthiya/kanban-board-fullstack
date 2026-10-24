@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -148,7 +148,7 @@ function KanbanBoard() {
                         <input
                             autoFocus
                             placeholder="Tag Name (e.g. Urgent)"
-                            className="w-full p-2 border border-gray-300 rounded-lg mb-4 text-sm focus:outline-none focus:border-black"
+                            className="w-full p-2.5 border border-gray-300 bg-white text-gray-900 placeholder-gray-400 rounded-lg mb-4 text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
                             value={newTagName}
                             onChange={(e) => setNewTagName(e.target.value)}
                         />
@@ -210,13 +210,13 @@ function KanbanBoard() {
                                                         </div>
                                                         {editingTaskId === task.id ? (
                                                             <div className="flex flex-col gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
-                                                                <input autoFocus className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:border-black focus:ring-1 focus:ring-black text-sm bg-white" value={tempTaskTitle} onChange={e => setTempTaskTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && updateTask(task.id, tempTaskTitle)} />
+                                                                <input autoFocus className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:border-black focus:ring-1 focus:ring-black text-sm bg-white text-gray-900" value={tempTaskTitle} onChange={e => setTempTaskTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && updateTask(task.id, tempTaskTitle)} />
                                                                 <div className="flex gap-2">
-                                                                    <select className="flex-1 p-1.5 border border-gray-300 rounded-md text-xs bg-white focus:border-black" value={task.assignee_id || ''} onChange={(e) => updateTask(task.id, undefined, e.target.value ? Number(e.target.value) : null)}>
+                                                                    <select className="flex-1 p-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-black" value={task.assignee_id || ''} onChange={(e) => updateTask(task.id, undefined, e.target.value ? Number(e.target.value) : null)}>
                                                                         <option value="">Assignee</option>
                                                                         {members.map(m => <option key={m.id} value={m.id}>{m.username}</option>)}
                                                                     </select>
-                                                                    <select className="flex-1 p-1.5 border border-gray-300 rounded-md text-xs bg-white focus:border-black" value="" onChange={(e) => handleAddTagToTask(task.id, e.target.value)}>
+                                                                    <select className="flex-1 p-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-black" value="" onChange={(e) => handleAddTagToTask(task.id, e.target.value)}>
                                                                         <option value="">Tag</option>
                                                                         {availableTags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                                                     </select>
@@ -251,15 +251,42 @@ function KanbanBoard() {
                             <div className="mt-3 pt-3 border-t border-gray-200/50">
                                 {newTaskTitles[col.id] !== undefined && newTaskTitles[col.id] !== null ? (
                                     <div className="flex flex-col gap-2 animate-in fade-in zoom-in duration-200">
-                                        <input autoFocus className="w-full p-3 rounded-xl border border-gray-300 shadow-sm text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black bg-white" placeholder="Type task title..." value={newTaskTitles[col.id]} onChange={(e) => setNewTaskTitles({ ...newTaskTitles, [col.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddTask(col.id)} />
+                                        <input
+                                            autoFocus
+                                            className="w-full p-3 rounded-xl border border-gray-300 shadow-sm text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black bg-white text-gray-900 placeholder-gray-400"
+                                            placeholder="Type task title..."
+                                            value={newTaskTitles[col.id]}
+                                            onChange={(e) => setNewTaskTitles({ ...newTaskTitles, [col.id]: e.target.value })}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddTask(col.id)}
+                                        />
                                         <div className="flex items-center gap-2">
-                                            <button onClick={() => handleAddTask(col.id)} className="bg-black text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm">Add Card</button>
-                                            <button onClick={() => setNewTaskTitles({ ...newTaskTitles, [col.id]: undefined })} className="text-gray-400 hover:text-gray-600 p-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddTask(col.id)}
+                                                className="bg-black text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm"
+                                            >
+                                                Add Card
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setNewTaskTitles({ ...newTaskTitles, [col.id]: undefined })}
+                                                className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200/50 transition-colors flex items-center justify-center"
+                                                title="Cancel"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <button onClick={() => setNewTaskTitles({ ...newTaskTitles, [col.id]: '' })} className="w-full text-left text-gray-500 hover:text-black hover:bg-gray-200/50 p-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 group">
-                                        <span className="bg-gray-200 text-gray-500 w-5 h-5 rounded flex items-center justify-center group-hover:bg-gray-300 group-hover:text-black transition-colors text-xs">+</span> Add a card
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewTaskTitles({ ...newTaskTitles, [col.id]: '' })}
+                                        className="w-full text-left bg-transparent text-gray-600 hover:text-black hover:bg-gray-200/70 p-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 group"
+                                    >
+                                        <span className="bg-white text-gray-500 border border-gray-300 w-5 h-5 rounded-md flex items-center justify-center group-hover:border-black group-hover:text-black transition-colors text-xs font-bold">+</span>
+                                        <span>Add a card</span>
                                     </button>
                                 )}
                             </div>
@@ -267,18 +294,46 @@ function KanbanBoard() {
                     ))}
 
                     {/*Add Column Button*/}
-                    <div className="min-w-[300px] bg-white/50 border-2 border-dashed border-gray-300 hover:border-black hover:bg-white transition-all rounded-2xl p-4 cursor-pointer group">
+                    <div className="min-w-[300px] w-[300px] bg-white/70 border-2 border-dashed border-gray-300 hover:border-black hover:bg-white transition-all rounded-2xl p-4 cursor-pointer group">
                         {newColName ? (
-                            <div className="bg-white p-1 rounded-lg">
-                                <input autoFocus type="text" placeholder="List title..." className="w-full p-2.5 rounded-lg border border-gray-300 text-sm mb-2 focus:outline-none focus:border-black" value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()} />
+                            <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="List title..."
+                                    className="w-full p-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder-gray-400 text-sm mb-3 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+                                    value={newColName}
+                                    onChange={(e) => setNewColName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                                />
                                 <div className="flex items-center gap-2">
-                                    <button onClick={handleAddColumn} className="bg-black text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors">Add List</button>
-                                    <button onClick={() => setNewColName('')} className="text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddColumn}
+                                        className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm"
+                                    >
+                                        Add List
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewColName('')}
+                                        className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+                                        title="Cancel"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
                         ) : (
-                            <button onClick={() => setNewColName(' ')} className="w-full text-gray-500 font-bold p-2 text-left flex items-center gap-2 group-hover:text-black transition-colors">
-                                <span className="text-xl">+</span> Add another list
+                            <button
+                                type="button"
+                                onClick={() => setNewColName(' ')}
+                                className="w-full bg-transparent text-gray-500 font-bold p-2 text-left flex items-center gap-2 group-hover:text-black transition-colors"
+                            >
+                                <span className="text-xl leading-none">+</span>
+                                <span>Add another list</span>
                             </button>
                         )}
                     </div>
