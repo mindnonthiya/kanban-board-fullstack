@@ -7,20 +7,36 @@ function Register() {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
+
+        if (!username.trim() || !email.trim() || !password) {
+            setError('Please fill in all fields');
+            return;
+        }
+
+        setIsLoading(true);
         try {
             await axios.post(`${API_URL}/auth/register`, {
                 username,
                 email,
                 password
             });
-            alert('สมัครสมาชิกสำเร็จ! 🎉 กรุณา Login');
-            navigate('/');
+            setSuccess('Registration successful! Redirecting to login...');
+            setTimeout(() => {
+                navigate('/');
+            }, 1200);
         } catch (err: any) {
-            alert(err.response?.data?.error || 'Register failed');
+            setError(err.response?.data?.error || 'Register failed. Please try again.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -40,6 +56,24 @@ function Register() {
                         </h1>
                         <p className="text-gray-400 text-sm font-medium">Join us and start organizing.</p>
                     </div>
+
+                    {error && (
+                        <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {success && (
+                        <div className="mb-5 p-3.5 rounded-xl bg-green-50 border border-green-200 text-green-700 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <span>{success}</span>
+                        </div>
+                    )}
 
                     <form onSubmit={handleRegister} className="space-y-5">
                         <div>
@@ -77,8 +111,19 @@ function Register() {
                         </div>
 
                         {/*Sign Up*/}
-                        <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition-transform active:scale-[0.98] shadow-lg shadow-gray-200 mt-2">
-                            Sign Up
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg shadow-gray-200 mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                    <span>Creating account...</span>
+                                </>
+                            ) : (
+                                'Sign Up'
+                            )}
                         </button>
                     </form>
 

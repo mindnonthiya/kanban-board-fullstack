@@ -34,13 +34,13 @@ router.get('/:boardId', authenticateToken, async (req: AuthRequest, res: Respons
 //สร้าง Task ใหม่
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { title, columnId, assigneeId } = req.body;
+        const { title, description, columnId, assigneeId } = req.body;
         const currentUserId = req.user?.id;
 
         //บันทึก Task
         const result = await pool.query(
-            'INSERT INTO tasks (title, column_id, assignee_id) VALUES ($1, $2, $3) RETURNING *',
-            [title, columnId, assigneeId || currentUserId]
+            'INSERT INTO tasks (title, description, column_id, assignee_id) VALUES ($1, $2, $3, $4) RETURNING *',
+            [title, description || '', columnId, assigneeId || currentUserId]
         );
         const newTask = result.rows[0];
 
@@ -83,7 +83,7 @@ router.put('/:id/move', authenticateToken, async (req: AuthRequest, res: Respons
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const { title, assigneeId } = req.body;
+        const { title, description, assigneeId } = req.body;
         const currentUserId = req.user?.id;
 
         const oldTask = await pool.query(`
@@ -99,10 +99,11 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         const result = await pool.query(`
             UPDATE tasks 
             SET title = COALESCE($1, title), 
-                assignee_id = $2 
-            WHERE id = $3 
+                description = COALESCE($2, description),
+                assignee_id = $3 
+            WHERE id = $4 
             RETURNING *, (SELECT username FROM users WHERE id = assignee_id) as assignee_name
-        `, [title, assigneeId, id]);
+        `, [title, description, assigneeId, id]);
 
         //ส่งแจ้งเตือน
         if (assigneeId && assigneeId !== oldAssignee && assigneeId !== currentUserId && boardId) {
