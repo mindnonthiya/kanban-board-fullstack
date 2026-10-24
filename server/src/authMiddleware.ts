@@ -6,6 +6,9 @@ const SECRET_KEY = process.env.JWT_SECRET || 'fallback_secret_key_change_in_prod
 
 export interface AuthRequest extends Request {
     user?: any;
+    params: any;
+    body: any;
+    query: any;
 }
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction): void => {
