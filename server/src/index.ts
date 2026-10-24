@@ -49,6 +49,15 @@ app.get('/test-db', async (req, res) => {
     }
 });
 
+app.get('/init-db', async (req, res) => {
+    try {
+        await initDatabase();
+        res.json({ message: 'Database initialized successfully!' });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Database initialization failed', details: err?.message });
+    }
+});
+
 // --- ส่วนของ Auth ---
 app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardRoutes);

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { pool } from './db';
 
@@ -29,9 +29,9 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         );
 
         res.json(newUser.rows[0]);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+    } catch (err: any) {
+        console.error('Register error:', err);
+        res.status(500).json({ error: 'Server error', details: err?.message });
     }
 });
 
@@ -60,9 +60,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         const token = jwt.sign({ id: user.id, username: user.username }, SECRET_KEY, { expiresIn: '1h' });
 
         res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+    } catch (err: any) {
+        console.error('Login error:', err);
+        res.status(500).json({ error: 'Server error', details: err?.message });
     }
 });
 
