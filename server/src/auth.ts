@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from './db';
 
 const router = Router();
-const SECRET_KEY = 'mysecretkey';
+const SECRET_KEY = process.env.JWT_SECRET || 'fallback_secret_key_change_in_prod';
 
 //Register
 router.post('/register', async (req: Request, res: Response): Promise<void> => {

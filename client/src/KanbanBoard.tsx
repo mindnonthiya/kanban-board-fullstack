@@ -5,7 +5,7 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import { API_URL } from './config';
 
 interface Tag { id: number; name: string; color: string; }
-interface Task { id: number; title: string; column_id: number; position: number; assignee_id?: number; assignee_name?: string; tags: Tag[]; }
+interface Task { id: number; title: string; description?: string; column_id: number; position: number; assignee_id?: number; assignee_name?: string; tags: Tag[]; }
 interface Column { id: number; name: string; }
 interface Member { id: number; username: string; email: string; }
 interface Notification { id: number; message: string; is_read: boolean; created_at: string; }
@@ -35,6 +35,12 @@ function KanbanBoard() {
     const [tempBoardName, setTempBoardName] = useState('');
     const [tempColName, setTempColName] = useState('');
     const [tempTaskTitle, setTempTaskTitle] = useState('');
+
+    //State สำหรับ Modal รายละเอียด Task
+    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [taskModalTitle, setTaskModalTitle] = useState('');
+    const [taskModalDesc, setTaskModalDesc] = useState('');
+    const [taskModalAssignee, setTaskModalAssignee] = useState<number | null>(null);
 
     //State สำหรับ Modal สร้าง Tag
     const [showTagModal, setShowTagModal] = useState(false);
@@ -87,7 +93,48 @@ function KanbanBoard() {
     const handleRemoveTag = async (taskId: number, tagId: number) => { if (window.confirm("Remove Tag?")) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/tags/task/${taskId}/${tagId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const updateBoardName = async () => { if (tempBoardName.trim()) { try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/boards/${boardId}`, { name: tempBoardName }, { headers: { Authorization: `Bearer ${token}` } }); setBoardName(tempBoardName); setIsEditingBoard(false); } catch (err) { setIsEditingBoard(false); } } else setIsEditingBoard(false); };
     const updateColumnName = async (colId: number) => { if (tempColName.trim()) { setColumns(columns.map(c => c.id === colId ? { ...c, name: tempColName } : c)); setEditingColId(null); try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/columns/${colId}`, { name: tempColName }, { headers: { Authorization: `Bearer ${token}` } }); } catch (err) { fetchData(); } } else setEditingColId(null); };
-    const updateTask = async (taskId: number, newTitle?: string, newAssigneeId?: number | null) => { const task = tasks.find(t => t.id === taskId); if (!task) return; const titleToSend = newTitle !== undefined ? newTitle : task.title; const assigneeToSend = newAssigneeId !== undefined ? newAssigneeId : task.assignee_id; const newTasks = tasks.map(t => t.id === taskId ? { ...t, title: titleToSend, assignee_id: assigneeToSend || undefined, assignee_name: members.find(m => m.id === assigneeToSend)?.username } : t); setTasks(newTasks); setEditingTaskId(null); try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/tasks/${taskId}`, { title: titleToSend, assigneeId: assigneeToSend }, { headers: { Authorization: `Bearer ${token}` } }); } catch (err) { fetchData(); } };
+    const updateTask = async (taskId: number, newTitle?: string, newAssigneeId?: number | null, newDescription?: string) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+        const titleToSend = newTitle !== undefined ? newTitle : task.title;
+        const assigneeToSend = newAssigneeId !== undefined ? newAssigneeId : task.assignee_id;
+        const descToSend = newDescription !== undefined ? newDescription : (task.description || '');
+
+        const newTasks = tasks.map(t => t.id === taskId ? {
+            ...t,
+            title: titleToSend,
+            description: descToSend,
+            assignee_id: assigneeToSend || undefined,
+            assignee_name: members.find(m => m.id === assigneeToSend)?.username
+        } : t);
+        setTasks(newTasks);
+        setEditingTaskId(null);
+
+        if (selectedTask && selectedTask.id === taskId) {
+            setSelectedTask({
+                ...selectedTask,
+                title: titleToSend,
+                description: descToSend,
+                assignee_id: assigneeToSend || undefined,
+                assignee_name: members.find(m => m.id === assigneeToSend)?.username
+            });
+        }
+
+        try {
+            const token = localStorage.getItem('token');
+            await axios.put(`${API_URL}/tasks/${taskId}`, {
+                title: titleToSend,
+                description: descToSend,
+                assigneeId: assigneeToSend
+            }, { headers: { Authorization: `Bearer ${token}` } });
+        } catch (err) { fetchData(); }
+    };
+
+    const handleSaveTaskDetail = async () => {
+        if (!selectedTask) return;
+        await updateTask(selectedTask.id, taskModalTitle, taskModalAssignee, taskModalDesc);
+        setSelectedTask(null);
+    };
     const handleDeleteColumn = async (colId: number) => { if (window.confirm('Delete Column?')) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/columns/${colId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const handleDeleteTask = async (taskId: number) => { if (window.confirm('Delete Task?')) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const onDragEnd = (result: DropResult) => { const { source, destination, draggableId } = result; if (!destination) return; if (source.droppableId === destination.droppableId && source.index === destination.index) return; const newTasks = Array.from(tasks); const movedTaskIndex = newTasks.findIndex(t => t.id === parseInt(draggableId)); const [movedTask] = newTasks.splice(movedTaskIndex, 1); movedTask.column_id = parseInt(destination.droppableId); newTasks.splice(destination.index, 0, movedTask); setTasks(newTasks); const token = localStorage.getItem('token'); axios.put(`${API_URL}/tasks/${draggableId}/move`, { columnId: parseInt(destination.droppableId), position: destination.index }, { headers: { Authorization: `Bearer ${token}` } }); };
@@ -117,7 +164,7 @@ function KanbanBoard() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-6">
+                <div className="flex items-center gap-4 sm:gap-6">
                     <div className="relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
                         <div onClick={() => setShowNotif(!showNotif)} className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-600 hover:text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -137,8 +184,162 @@ function KanbanBoard() {
                             </div>
                         )}
                     </div>
+
+                    {/* User profile & Logout */}
+                    <div className="flex items-center gap-2.5 pl-3 border-l border-gray-200">
+                        <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                            {(localStorage.getItem('username') || 'U')[0].toUpperCase()}
+                        </div>
+                        <span className="text-sm font-semibold text-gray-800 hidden md:inline">
+                            {localStorage.getItem('username') || 'User'}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => { localStorage.clear(); navigate('/'); }}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-full transition-colors"
+                            title="Logout"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            {/*Modal รายละเอียด Task*/}
+            {selectedTask && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setSelectedTask(null)}>
+                    <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-lg border border-gray-100 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-start gap-4 mb-5">
+                            <div className="flex-1">
+                                <span className="inline-block text-[11px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md mb-2">
+                                    {columns.find(c => c.id === selectedTask.column_id)?.name || 'Column'}
+                                </span>
+                                <input
+                                    type="text"
+                                    value={taskModalTitle}
+                                    onChange={(e) => setTaskModalTitle(e.target.value)}
+                                    placeholder="Task title..."
+                                    className="w-full text-xl font-bold text-gray-900 border-b-2 border-gray-200 focus:border-black outline-none transition-colors pb-1 bg-white"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTask(null)}
+                                className="text-gray-400 hover:text-black p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Assignee & Tags */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assignee</label>
+                                <select
+                                    className="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                                    value={taskModalAssignee || ''}
+                                    onChange={(e) => setTaskModalAssignee(e.target.value ? Number(e.target.value) : null)}
+                                >
+                                    <option value="">Unassigned</option>
+                                    {members.map(m => (
+                                        <option key={m.id} value={m.id}>{m.username}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Add Tag</label>
+                                <select
+                                    className="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                                    value=""
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            handleAddTagToTask(selectedTask.id, e.target.value);
+                                        }
+                                    }}
+                                >
+                                    <option value="">Select a tag...</option>
+                                    {availableTags.map(t => (
+                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Active Tags list */}
+                        {selectedTask.tags.length > 0 && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Active Tags</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedTask.tags.map(tag => (
+                                        <span
+                                            key={tag.id}
+                                            className="text-xs font-semibold px-2.5 py-1 rounded-md text-white flex items-center gap-1.5 shadow-sm"
+                                            style={{ backgroundColor: tag.color }}
+                                        >
+                                            {tag.name}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveTag(selectedTask.id, tag.id)}
+                                                className="hover:opacity-75 font-bold text-white text-xs ml-1"
+                                                title="Remove tag"
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Description Textarea */}
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+                            <textarea
+                                rows={4}
+                                placeholder="Add detailed notes, acceptance criteria, or context for this task..."
+                                className="w-full p-3 border border-gray-300 rounded-xl text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all leading-relaxed"
+                                value={taskModalDesc}
+                                onChange={(e) => setTaskModalDesc(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Modal Actions */}
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleDeleteTask(selectedTask.id);
+                                    setSelectedTask(null);
+                                }}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Delete Task
+                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedTask(null)}
+                                    className="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveTaskDetail}
+                                    className="bg-black text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm"
+                                >
+                                    Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/*Modal สร้าง Tag*/}
             {showTagModal && (
@@ -225,17 +426,55 @@ function KanbanBoard() {
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                <div onClick={() => { setEditingTaskId(task.id); setTempTaskTitle(task.title); }} className="cursor-pointer">
-                                                                    <span className="block mb-2 font-medium leading-snug">{task.title}</span>
-                                                                    {task.assignee_name &&
-                                                                        <div className="flex items-center gap-1 mt-2">
-                                                                            <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">{task.assignee_name[0].toUpperCase()}</div>
-                                                                            <span className="text-[10px] text-gray-500 font-medium">{task.assignee_name}</span>
+                                                                <div
+                                                                    onClick={() => {
+                                                                        setSelectedTask(task);
+                                                                        setTaskModalTitle(task.title);
+                                                                        setTaskModalDesc(task.description || '');
+                                                                        setTaskModalAssignee(task.assignee_id || null);
+                                                                    }}
+                                                                    className="cursor-pointer"
+                                                                >
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <span className="block mb-1.5 font-semibold text-gray-900 leading-snug">{task.title}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setEditingTaskId(task.id);
+                                                                                setTempTaskTitle(task.title);
+                                                                            }}
+                                                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-black hover:bg-gray-100 rounded transition-all"
+                                                                            title="Quick edit"
+                                                                        >
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    </div>
+                                                                    {task.description && (
+                                                                        <p className="text-xs text-gray-500 line-clamp-2 mb-2 leading-relaxed">
+                                                                            {task.description}
+                                                                        </p>
+                                                                    )}
+                                                                    {task.assignee_name && (
+                                                                        <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-gray-100">
+                                                                            <div className="w-5 h-5 rounded-full bg-gray-900 text-white flex items-center justify-center text-[10px] font-bold">
+                                                                                {task.assignee_name[0].toUpperCase()}
+                                                                            </div>
+                                                                            <span className="text-[11px] text-gray-600 font-medium">{task.assignee_name}</span>
                                                                         </div>
-                                                                    }
+                                                                    )}
                                                                 </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 p-1">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
+                                                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 p-1"
+                                                                    title="Delete task"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                    </svg>
                                                                 </button>
                                                             </>
                                                         )}

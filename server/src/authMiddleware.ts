@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
 //ต้องตรงกับใน auth.ts
-const SECRET_KEY = 'mysecretkey';
+const SECRET_KEY = process.env.JWT_SECRET || 'fallback_secret_key_change_in_prod';
 
 export interface AuthRequest extends Request {
     user?: any;

@@ -6,10 +6,19 @@ import { API_URL } from './config';
 function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError('');
+        if (!email.trim() || !password) {
+            setError('Please enter both email and password');
+            return;
+        }
+
+        setIsLoading(true);
         try {
             const res = await axios.post(`${API_URL}/auth/login`, {
                 email,
@@ -20,12 +29,13 @@ function Login() {
             localStorage.setItem('userId', res.data.user.id);
             localStorage.setItem('username', res.data.user.username);
 
-            // alert('Login Success! 🎉'); // เอา Alert ออกเพื่อให้ดูลื่นไหลขึ้น
             navigate('/board');
 
         } catch (err: any) {
             console.error(err);
-            alert(err.response?.data?.error || 'Login failed');
+            setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -44,6 +54,15 @@ function Login() {
                         </h1>
                         <p className="text-gray-400 text-sm font-medium">Welcome back, please login.</p>
                     </div>
+
+                    {error && (
+                        <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <span>{error}</span>
+                        </div>
+                    )}
 
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div>
@@ -68,8 +87,19 @@ function Login() {
                         </div>
 
                         {/*Login*/}
-                        <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition-transform active:scale-[0.98] shadow-lg shadow-gray-200">
-                            Login
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition-all active:scale-[0.98] shadow-lg shadow-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                    <span>Logging in...</span>
+                                </>
+                            ) : (
+                                'Login'
+                            )}
                         </button>
                     </form>
 
