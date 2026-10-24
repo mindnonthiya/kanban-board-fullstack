@@ -30,9 +30,12 @@ app.get('/test-db', async (req, res) => {
             message: 'Database Connected Successfully!',
             time: result.rows[0].now
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Database connection failed' });
+    } catch (err: any) {
+        console.error('Database connection error:', err);
+        res.status(500).json({ 
+            error: 'Database connection failed', 
+            details: err?.message || String(err)
+        });
     }
 });
 
