@@ -32,9 +32,19 @@ app.get('/test-db', async (req, res) => {
         });
     } catch (err: any) {
         console.error('Database connection error:', err);
+        let debugInfo = 'DATABASE_URL not set';
+        if (process.env.DATABASE_URL) {
+            try {
+                const u = new URL(process.env.DATABASE_URL);
+                debugInfo = `user="${u.username}", host="${u.host}", port="${u.port}", passLength=${u.password.length}`;
+            } catch (e: any) {
+                debugInfo = 'URL parse error: ' + e.message;
+            }
+        }
         res.status(500).json({ 
             error: 'Database connection failed', 
-            details: err?.message || String(err)
+            details: err?.message || String(err),
+            debug: debugInfo
         });
     }
 });
