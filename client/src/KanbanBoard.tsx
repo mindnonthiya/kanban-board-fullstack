@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-
-const API_URL = 'http://192.168.1.147:3000/api';
+import { API_URL } from './config';
 
 interface Tag { id: number; name: string; color: string; }
 interface Task { id: number; title: string; column_id: number; position: number; assignee_id?: number; assignee_name?: string; tags: Tag[]; }

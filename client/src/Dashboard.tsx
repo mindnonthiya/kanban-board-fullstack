@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-
-const API_URL = 'http://192.168.1.147:3000/api';
+import { API_URL } from './config';
 
 interface Board { id: number; name: string; }
 interface Notification { id: number; board_id: number; message: string; is_read: boolean; created_at: string; }
