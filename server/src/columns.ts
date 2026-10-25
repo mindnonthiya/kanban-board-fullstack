@@ -26,9 +26,15 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
             return;
         }
 
+        const posRes = await pool.query(
+            'SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM columns WHERE board_id = $1',
+            [boardId]
+        );
+        const nextPos = posRes.rows[0].next_pos;
+
         const result = await pool.query(
-            'INSERT INTO columns (name, board_id) VALUES ($1, $2) RETURNING *',
-            [name, boardId]
+            'INSERT INTO columns (name, board_id, position) VALUES ($1, $2, $3) RETURNING *',
+            [name, boardId, nextPos]
         );
 
         res.json(result.rows[0]);

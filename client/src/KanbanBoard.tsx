@@ -204,7 +204,49 @@ function KanbanBoard() {
     };
     const handleDeleteColumn = async (colId: number) => { if (window.confirm('Delete Column?')) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/columns/${colId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const handleDeleteTask = async (taskId: number) => { if (window.confirm('Delete Task?')) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
-    const onDragEnd = (result: DropResult) => { const { source, destination, draggableId } = result; if (!destination) return; if (source.droppableId === destination.droppableId && source.index === destination.index) return; const newTasks = Array.from(tasks); const movedTaskIndex = newTasks.findIndex(t => t.id === parseInt(draggableId)); const [movedTask] = newTasks.splice(movedTaskIndex, 1); movedTask.column_id = parseInt(destination.droppableId); newTasks.splice(destination.index, 0, movedTask); setTasks(newTasks); const token = localStorage.getItem('token'); axios.put(`${API_URL}/tasks/${draggableId}/move`, { columnId: parseInt(destination.droppableId), position: destination.index }, { headers: { Authorization: `Bearer ${token}` } }); };
+    const onDragEnd = (result: DropResult) => {
+        const { source, destination, draggableId } = result;
+        if (!destination) return;
+        if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+        const sourceColId = parseInt(source.droppableId);
+        const destColId = parseInt(destination.droppableId);
+        const taskId = parseInt(draggableId);
+
+        // Optimistic UI state update
+        setTasks(prevTasks => {
+            const movedTask = prevTasks.find(t => t.id === taskId);
+            if (!movedTask) return prevTasks;
+
+            const updatedMovedTask = { ...movedTask, column_id: destColId };
+
+            if (sourceColId === destColId) {
+                // Moving inside the same column
+                const colTasks = prevTasks.filter(t => t.column_id === destColId && t.id !== taskId);
+                colTasks.splice(destination.index, 0, updatedMovedTask);
+                const otherTasks = prevTasks.filter(t => t.column_id !== destColId);
+                return [...otherTasks, ...colTasks];
+            } else {
+                // Moving across different columns
+                const sourceTasks = prevTasks.filter(t => t.column_id === sourceColId && t.id !== taskId);
+                const destTasks = prevTasks.filter(t => t.column_id === destColId && t.id !== taskId);
+                destTasks.splice(destination.index, 0, updatedMovedTask);
+                const unaffectedTasks = prevTasks.filter(t => t.column_id !== sourceColId && t.column_id !== destColId);
+                return [...unaffectedTasks, ...sourceTasks, ...destTasks];
+            }
+        });
+
+        const token = localStorage.getItem('token');
+        axios.put(`${API_URL}/tasks/${draggableId}/move`, {
+            columnId: destColId,
+            position: destination.index
+        }, {
+            headers: { Authorization: `Bearer ${token}` }
+        }).catch(err => {
+            console.error('Failed to move task:', err);
+            fetchData();
+        });
+    };
     const handleAddColumn = async () => { if (newColName) { try { const token = localStorage.getItem('token'); await axios.post(`${API_URL}/columns`, { name: newColName, boardId: boardId }, { headers: { Authorization: `Bearer ${token}` } }); setNewColName(''); fetchData(); } catch (err) { alert('Error'); } } };
     const handleAddTask = async (columnId: number) => { const title = newTaskTitles[columnId]; if (title) { try { const token = localStorage.getItem('token'); await axios.post(`${API_URL}/tasks`, { title: title, columnId: columnId }, { headers: { Authorization: `Bearer ${token}` } }); setNewTaskTitles({ ...newTaskTitles, [columnId]: '' }); fetchData(); } catch (err) { alert('Error'); } } };
 
@@ -376,6 +418,9 @@ function KanbanBoard() {
                         <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
                             <span className="text-xs text-gray-500 font-medium">
                                 Showing <strong className="text-black">{filteredTasks.length}</strong> of {tasks.length}
+                            </span>
+                            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                                Reordering paused while filtering
                             </span>
                             <button
                                 onClick={() => { setSearchQuery(''); setFilterTagId(null); setFilterMyTasks(false); setFilterPriority('all'); }}
@@ -723,10 +768,12 @@ function KanbanBoard() {
                                 {(provided) => (
                                     <div {...provided.droppableProps} ref={provided.innerRef} className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[100px] scrollbar-hide">
                                         {filteredTasks.filter(task => task.column_id === col.id).map((task, index) => (
-                                            <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                                            <Draggable key={task.id} draggableId={task.id.toString()} index={index} isDragDisabled={isFilterActive}>
                                                 {(provided, snapshot) => (
                                                     <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{ ...provided.draggableProps.style }}
-                                                        className={`bg-white p-4 rounded-xl shadow-sm text-gray-800 border border-gray-200 group relative transition-all ${snapshot.isDragging ? 'shadow-lg rotate-2 scale-105 ring-2 ring-black' : 'hover:border-gray-300 hover:shadow-md'}`}>
+                                                        className={`bg-white p-4 rounded-xl shadow-sm text-gray-800 border border-gray-200 group relative transition-all ${
+                                                            isFilterActive ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+                                                        } ${snapshot.isDragging ? 'shadow-lg rotate-2 scale-105 ring-2 ring-black cursor-grabbing' : 'hover:border-gray-300 hover:shadow-md'}`}>
                                                         <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
                                                             {/* Priority Pill */}
                                                             {task.priority === 'high' && (

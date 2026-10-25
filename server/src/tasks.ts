@@ -22,7 +22,7 @@ router.get('/:boardId', authenticateToken, async (req: AuthRequest, res: Respons
       LEFT JOIN tags tg ON tt.tag_id = tg.id
       WHERE c.board_id = $1
       GROUP BY t.id, u.username
-      ORDER BY t.position ASC
+      ORDER BY t.position ASC, t.id ASC
     `, [boardId]);
         res.json(result.rows);
     } catch (err) {
@@ -37,10 +37,17 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
         const { title, description, columnId, assigneeId, priority, dueDate } = req.body;
         const currentUserId = req.user?.id;
 
+        // คำนวณ position ถัดไปในคอลัมน์นี้
+        const posResult = await pool.query(
+            'SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM tasks WHERE column_id = $1',
+            [columnId]
+        );
+        const nextPos = posResult.rows[0].next_pos;
+
         //บันทึก Task
         const result = await pool.query(
-            'INSERT INTO tasks (title, description, column_id, assignee_id, priority, due_date) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [title, description || '', columnId, assigneeId || currentUserId, priority || 'medium', dueDate || null]
+            'INSERT INTO tasks (title, description, column_id, assignee_id, priority, due_date, position) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [title, description || '', columnId, assigneeId || currentUserId, priority || 'medium', dueDate || null, nextPos]
         );
         const newTask = result.rows[0];
 
@@ -63,19 +70,92 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
     }
 });
 
-//ย้ายตำแหน่ง Task
+//ย้ายตำแหน่ง Task แบบ Atomic Transaction พร้อม Normalize Position
 router.put('/:id/move', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const { columnId, position } = req.body;
-        await pool.query(
-            'UPDATE tasks SET column_id = $1, position = $2 WHERE id = $3',
-            [columnId, position, id]
-        );
+        const taskId = parseInt(id);
+        const targetColId = parseInt(columnId);
+        const targetPos = Math.max(0, parseInt(position) || 0);
+
+        await client.query('BEGIN');
+
+        // 1. ดึงข้อมูลตำแหน่งปัจจุบันของ Task
+        const currentTaskRes = await client.query('SELECT id, column_id, position FROM tasks WHERE id = $1', [taskId]);
+        if (currentTaskRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            res.status(404).json({ error: 'Task not found' });
+            return;
+        }
+
+        const currentTask = currentTaskRes.rows[0];
+        const oldColId = currentTask.column_id;
+        const oldPos = currentTask.position;
+
+        if (oldColId === targetColId) {
+            // ย้ายภายในคอลัมน์เดียวกัน
+            if (oldPos < targetPos) {
+                // เลื่อนลง: ปรับ position ของตัวที่อยู่ระหว่าง oldPos กับ targetPos ขึ้น 1
+                await client.query(
+                    'UPDATE tasks SET position = position - 1 WHERE column_id = $1 AND position > $2 AND position <= $3 AND id != $4',
+                    [targetColId, oldPos, targetPos, taskId]
+                );
+            } else if (oldPos > targetPos) {
+                // เลื่อนขึ้น: ปรับ position ของตัวที่อยู่ระหว่าง targetPos กับ oldPos ลง 1
+                await client.query(
+                    'UPDATE tasks SET position = position + 1 WHERE column_id = $1 AND position >= $2 AND position < $3 AND id != $4',
+                    [targetColId, targetPos, oldPos, taskId]
+                );
+            }
+            await client.query(
+                'UPDATE tasks SET position = $1 WHERE id = $2',
+                [targetPos, taskId]
+            );
+        } else {
+            // ย้ายข้ามคอลัมน์
+            // 1) จัดการช่องว่างในคอลัมน์เดิม
+            await client.query(
+                'UPDATE tasks SET position = position - 1 WHERE column_id = $1 AND position > $2',
+                [oldColId, oldPos]
+            );
+            // 2) ขยายช่องว่างในคอลัมน์ปลายทาง
+            await client.query(
+                'UPDATE tasks SET position = position + 1 WHERE column_id = $1 AND position >= $2',
+                [targetColId, targetPos]
+            );
+            // 3) ย้าย Task ไปยังคอลัมน์ใหม่
+            await client.query(
+                'UPDATE tasks SET column_id = $1, position = $2 WHERE id = $3',
+                [targetColId, targetPos, taskId]
+            );
+        }
+
+        // Normalize positions ในคอลัมน์ที่เกี่ยวข้องให้เรียง 0, 1, 2, ... อย่างแน่นอนเสมอ
+        const affectedCols = oldColId === targetColId ? [targetColId] : [oldColId, targetColId];
+        for (const cId of affectedCols) {
+            await client.query(`
+                WITH reordered AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY position ASC, id ASC) - 1 AS new_pos
+                    FROM tasks
+                    WHERE column_id = $1
+                )
+                UPDATE tasks t
+                SET position = r.new_pos
+                FROM reordered r
+                WHERE t.id = r.id;
+            `, [cId]);
+        }
+
+        await client.query('COMMIT');
         res.json({ message: 'Moved successfully' });
     } catch (err) {
-        console.error(err);
+        await client.query('ROLLBACK');
+        console.error('Error moving task:', err);
         res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -125,15 +205,39 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
     }
 });
 
-//ลบ Task
+//ลบ Task พร้อมจัดเรียง position ใหม่
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
-        await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
+        await client.query('BEGIN');
+        const taskRes = await client.query('SELECT column_id FROM tasks WHERE id = $1', [id]);
+        const colId = taskRes.rows[0]?.column_id;
+
+        await client.query('DELETE FROM tasks WHERE id = $1', [id]);
+
+        if (colId) {
+            await client.query(`
+                WITH reordered AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY position ASC, id ASC) - 1 AS new_pos
+                    FROM tasks
+                    WHERE column_id = $1
+                )
+                UPDATE tasks t
+                SET position = r.new_pos
+                FROM reordered r
+                WHERE t.id = r.id;
+            `, [colId]);
+        }
+
+        await client.query('COMMIT');
         res.json({ message: 'Task deleted' });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
     }
 });
 
