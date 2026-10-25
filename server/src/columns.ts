@@ -8,7 +8,7 @@ const router = Router();
 router.get('/:boardId', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { boardId } = req.params;
-        const result = await pool.query('SELECT * FROM columns WHERE board_id = $1 ORDER BY id', [boardId]);
+        const result = await pool.query('SELECT * FROM columns WHERE board_id = $1 ORDER BY position ASC, id ASC', [boardId]);
         res.json(result.rows);
     } catch (err) {
         console.error(err);

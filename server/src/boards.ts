@@ -38,8 +38,18 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Pro
             'INSERT INTO boards (name, user_id) VALUES ($1, $2) RETURNING *',
             [name, userId]
         );
+        const newBoard = result.rows[0];
 
-        res.json(result.rows[0]);
+        // สร้าง 3 คอลัมน์เริ่มต้นมาตรฐาน (To Do, In Progress, Done)
+        await pool.query(`
+            INSERT INTO columns (name, board_id, position)
+            VALUES 
+                ('To Do', $1, 1),
+                ('In Progress', $1, 2),
+                ('Done', $1, 3)
+        `, [newBoard.id]);
+
+        res.json(newBoard);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });

@@ -47,6 +47,17 @@ function KanbanBoard() {
     const [newTagName, setNewTagName] = useState('');
     const [newTagColor, setNewTagColor] = useState('#3B82F6');
 
+    //State สำหรับ Modal Invite สมาชิก
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteLoading, setInviteLoading] = useState(false);
+    const [inviteMsg, setInviteMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    //State สำหรับ Search & Filter
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterTagId, setFilterTagId] = useState<number | null>(null);
+    const [filterMyTasks, setFilterMyTasks] = useState(false);
+
     const fetchData = async () => {
         try {
             const token = localStorage.getItem('token');
@@ -88,7 +99,27 @@ function KanbanBoard() {
         } catch (err) { alert('Failed to create tag'); }
     };
 
-    const handleInvite = async () => { const email = prompt("Email:"); if (email) { try { const token = localStorage.getItem('token'); await axios.post(`${API_URL}/boards/${boardId}/invite`, { email }, { headers: { Authorization: `Bearer ${token}` } }); alert(`Invited ${email}!`); } catch (err: any) { alert(err.response?.data?.error || 'Failed'); } } };
+    //ฟังก์ชันเชิญสมาชิกผ่าน Modal
+    const submitInvite = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inviteEmail.trim()) return;
+        setInviteLoading(true);
+        setInviteMsg(null);
+        try {
+            const token = localStorage.getItem('token');
+            await axios.post(`${API_URL}/boards/${boardId}/invite`, { email: inviteEmail.trim() }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setInviteMsg({ type: 'success', text: `Invited ${inviteEmail.trim()} successfully!` });
+            setInviteEmail('');
+            fetchData();
+        } catch (err: any) {
+            setInviteMsg({ type: 'error', text: err.response?.data?.error || 'Failed to invite user' });
+        } finally {
+            setInviteLoading(false);
+        }
+    };
+
     const handleAddTagToTask = async (taskId: number, tagId: string) => { if (tagId) { try { const token = localStorage.getItem('token'); await axios.post(`${API_URL}/tags/task`, { taskId, tagId: Number(tagId) }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const handleRemoveTag = async (taskId: number, tagId: number) => { if (window.confirm("Remove Tag?")) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/tags/task/${taskId}/${tagId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const updateBoardName = async () => { if (tempBoardName.trim()) { try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/boards/${boardId}`, { name: tempBoardName }, { headers: { Authorization: `Bearer ${token}` } }); setBoardName(tempBoardName); setIsEditingBoard(false); } catch (err) { setIsEditingBoard(false); } } else setIsEditingBoard(false); };
@@ -143,11 +174,25 @@ function KanbanBoard() {
 
     const unreadCount = notifications.filter(n => !n.is_read).length;
 
+    // Filtered tasks computation
+    const currentUserId = Number(localStorage.getItem('userId'));
+    const filteredTasks = tasks.filter(task => {
+        const matchesSearch = !searchQuery.trim() ||
+            task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()));
+        const matchesTag = filterTagId === null ||
+            task.tags?.some(tag => tag.id === filterTagId);
+        const matchesMyTasks = !filterMyTasks ||
+            task.assignee_id === currentUserId;
+        return matchesSearch && matchesTag && matchesMyTasks;
+    });
+    const isFilterActive = searchQuery.trim() !== '' || filterTagId !== null || filterMyTasks;
+
     return (
         <div className="min-h-screen w-screen bg-[#FAFAFA] p-8 font-sans overflow-x-auto relative text-gray-900 selection:bg-black selection:text-white" onClick={() => setShowNotif(false)}>
 
             {/* Header */}
-            <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-200">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate('/board')} className="text-gray-400 hover:text-black transition-colors font-bold text-lg">←</button>
                     {isEditingBoard ? (
@@ -158,7 +203,13 @@ function KanbanBoard() {
                         </h1>
                     )}
                     <div className="flex gap-2 ml-4">
-                        <button onClick={handleInvite} className="bg-black text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-gray-800 transition-all shadow-sm">Invite +</button>
+                        <button
+                            onClick={() => { setShowInviteModal(true); setInviteMsg(null); setInviteEmail(''); }}
+                            className="bg-black text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-gray-800 transition-all shadow-sm flex items-center gap-1.5"
+                        >
+                            <span>Invite</span>
+                            <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full">{members.length}</span>
+                        </button>
                         
                         <button onClick={() => setShowTagModal(true)} className="bg-white border border-gray-300 text-gray-600 px-4 py-1.5 rounded-full text-xs font-bold hover:border-black hover:text-black transition-all">Tag +</button>
                     </div>
@@ -204,6 +255,82 @@ function KanbanBoard() {
                             </svg>
                         </button>
                     </div>
+                </div>
+            </div>
+
+            {/* Search & Filter Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+                <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-md">
+                    <div className="relative w-full">
+                        <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search cards by title or notes..."
+                            className="w-full pl-9 pr-8 py-2 text-xs bg-gray-50 hover:bg-gray-100/70 focus:bg-white text-gray-900 placeholder-gray-400 border border-gray-200 focus:border-black rounded-xl outline-none transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black text-xs font-bold"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* My Tasks filter pill */}
+                    <button
+                        onClick={() => setFilterMyTasks(!filterMyTasks)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            filterMyTasks
+                                ? 'bg-black text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                    >
+                        <span>My Tasks</span>
+                        {filterMyTasks && <span className="text-[10px]">✓</span>}
+                    </button>
+
+                    {/* Tag filter dropdown */}
+                    {availableTags.length > 0 && (
+                        <select
+                            value={filterTagId === null ? '' : filterTagId}
+                            onChange={(e) => setFilterTagId(e.target.value ? Number(e.target.value) : null)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border outline-none cursor-pointer ${
+                                filterTagId !== null
+                                    ? 'bg-black text-white border-black'
+                                    : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                            }`}
+                        >
+                            <option value="" className="bg-white text-gray-900">All Tags</option>
+                            {availableTags.map(tag => (
+                                <option key={tag.id} value={tag.id} className="bg-white text-gray-900">
+                                    Tag: {tag.name}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+
+                    {/* Filter count & clear */}
+                    {isFilterActive && (
+                        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+                            <span className="text-xs text-gray-500 font-medium">
+                                Showing <strong className="text-black">{filteredTasks.length}</strong> of {tasks.length}
+                            </span>
+                            <button
+                                onClick={() => { setSearchQuery(''); setFilterTagId(null); setFilterMyTasks(false); }}
+                                className="text-xs text-red-500 hover:text-red-700 font-bold hover:underline"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -341,6 +468,81 @@ function KanbanBoard() {
                 </div>
             )}
 
+            {/*Modal Invite สมาชิก*/}
+            {showInviteModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setShowInviteModal(false)}>
+                    <div className="bg-white p-6 sm:p-7 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-5">
+                            <div>
+                                <h3 className="text-lg font-black text-gray-900">Invite Member</h3>
+                                <p className="text-xs text-gray-500 mt-0.5">Share "{boardName}" with your teammates</p>
+                            </div>
+                            <button
+                                onClick={() => setShowInviteModal(false)}
+                                className="text-gray-400 hover:text-black p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {inviteMsg && (
+                            <div className={`p-3 rounded-xl text-xs font-semibold mb-4 flex items-center gap-2 ${
+                                inviteMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}>
+                                <span>{inviteMsg.type === 'success' ? '✓' : '⚠'}</span>
+                                <span>{inviteMsg.text}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={submitInvite} className="mb-6">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Member Email</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="email"
+                                    autoFocus
+                                    required
+                                    placeholder="colleague@example.com"
+                                    value={inviteEmail}
+                                    onChange={(e) => setInviteEmail(e.target.value)}
+                                    className="flex-1 p-2.5 text-sm border border-gray-300 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={inviteLoading}
+                                    className="bg-black text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-50 whitespace-nowrap"
+                                >
+                                    {inviteLoading ? 'Sending...' : 'Invite'}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5">
+                                Members in this board ({members.length})
+                            </label>
+                            <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                                {members.map((m) => (
+                                    <div key={m.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-7 h-7 rounded-full bg-black text-white text-[11px] font-bold flex items-center justify-center">
+                                                {m.username[0].toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-bold text-gray-900">{m.username}</div>
+                                                <div className="text-[11px] text-gray-400">{m.email}</div>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-white px-2 py-0.5 rounded-md border border-gray-200">
+                                            Member
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/*Modal สร้าง Tag*/}
             {showTagModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[999] flex items-center justify-center" onClick={() => setShowTagModal(false)}>
@@ -391,7 +593,7 @@ function KanbanBoard() {
                                 {editingColId === col.id ? (
                                     <input autoFocus className="font-bold text-gray-900 bg-white px-2 py-1 w-full border border-black rounded-lg shadow-sm" value={tempColName} onChange={e => setTempColName(e.target.value)} onBlur={() => updateColumnName(col.id)} onKeyDown={e => e.key === 'Enter' && updateColumnName(col.id)} />
                                 ) : (
-                                    <h2 onClick={() => { setEditingColId(col.id); setTempColName(col.name); }} className="font-bold text-gray-700 text-sm uppercase tracking-wide cursor-pointer w-full hover:text-black transition-colors">{col.name} <span className="text-gray-400 font-normal ml-2">{tasks.filter(t => t.column_id === col.id).length}</span></h2>
+                                    <h2 onClick={() => { setEditingColId(col.id); setTempColName(col.name); }} className="font-bold text-gray-700 text-sm uppercase tracking-wide cursor-pointer w-full hover:text-black transition-colors">{col.name} <span className="text-gray-400 font-normal ml-2">{filteredTasks.filter(t => t.column_id === col.id).length}</span></h2>
                                 )}
                                 <button onClick={() => handleDeleteColumn(col.id)} className="text-gray-400 hover:text-red-500 font-bold px-2 transition-colors">×</button>
                             </div>
@@ -399,7 +601,7 @@ function KanbanBoard() {
                             <Droppable droppableId={col.id.toString()}>
                                 {(provided) => (
                                     <div {...provided.droppableProps} ref={provided.innerRef} className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[100px] scrollbar-hide">
-                                        {tasks.filter(task => task.column_id === col.id).map((task, index) => (
+                                        {filteredTasks.filter(task => task.column_id === col.id).map((task, index) => (
                                             <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
                                                 {(provided, snapshot) => (
                                                     <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{ ...provided.draggableProps.style }}
