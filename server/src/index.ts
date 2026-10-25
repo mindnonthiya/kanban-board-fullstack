@@ -106,8 +106,16 @@ const initDatabase = async () => {
         description TEXT,
         column_id INTEGER REFERENCES columns(id) ON DELETE CASCADE,
         position SERIAL,
-        assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL 
+        assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        priority VARCHAR(20) DEFAULT 'medium',
+        due_date DATE
       );
+    `);
+
+        // Migration สำหรับตาราง tasks ที่มีอยู่แล้ว
+        await pool.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'medium';
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE;
     `);
 
         //ตาราง Board Members (สมาชิกในบอร์ด)

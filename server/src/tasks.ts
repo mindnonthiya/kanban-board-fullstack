@@ -34,13 +34,13 @@ router.get('/:boardId', authenticateToken, async (req: AuthRequest, res: Respons
 //สร้าง Task ใหม่
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { title, description, columnId, assigneeId } = req.body;
+        const { title, description, columnId, assigneeId, priority, dueDate } = req.body;
         const currentUserId = req.user?.id;
 
         //บันทึก Task
         const result = await pool.query(
-            'INSERT INTO tasks (title, description, column_id, assignee_id) VALUES ($1, $2, $3, $4) RETURNING *',
-            [title, description || '', columnId, assigneeId || currentUserId]
+            'INSERT INTO tasks (title, description, column_id, assignee_id, priority, due_date) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [title, description || '', columnId, assigneeId || currentUserId, priority || 'medium', dueDate || null]
         );
         const newTask = result.rows[0];
 
@@ -83,7 +83,7 @@ router.put('/:id/move', authenticateToken, async (req: AuthRequest, res: Respons
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const { title, description, assigneeId } = req.body;
+        const { title, description, assigneeId, priority, dueDate } = req.body;
         const currentUserId = req.user?.id;
 
         const oldTask = await pool.query(`
@@ -96,14 +96,18 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         const oldAssignee = oldTask.rows[0]?.assignee_id;
         const boardId = oldTask.rows[0]?.board_id;
 
+        const targetDueDate = dueDate !== undefined ? dueDate : oldTask.rows[0]?.due_date;
+
         const result = await pool.query(`
             UPDATE tasks 
             SET title = COALESCE($1, title), 
                 description = COALESCE($2, description),
-                assignee_id = $3 
-            WHERE id = $4 
+                assignee_id = $3,
+                priority = COALESCE($4, priority),
+                due_date = $5
+            WHERE id = $6 
             RETURNING *, (SELECT username FROM users WHERE id = assignee_id) as assignee_name
-        `, [title, description, assigneeId, id]);
+        `, [title, description, assigneeId, priority, targetDueDate, id]);
 
         //ส่งแจ้งเตือน
         if (assigneeId && assigneeId !== oldAssignee && assigneeId !== currentUserId && boardId) {

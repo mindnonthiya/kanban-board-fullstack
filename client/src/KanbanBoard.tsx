@@ -5,7 +5,18 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import { API_URL } from './config';
 
 interface Tag { id: number; name: string; color: string; }
-interface Task { id: number; title: string; description?: string; column_id: number; position: number; assignee_id?: number; assignee_name?: string; tags: Tag[]; }
+interface Task {
+    id: number;
+    title: string;
+    description?: string;
+    column_id: number;
+    position: number;
+    assignee_id?: number;
+    assignee_name?: string;
+    tags: Tag[];
+    priority?: 'low' | 'medium' | 'high';
+    due_date?: string | null;
+}
 interface Column { id: number; name: string; }
 interface Member { id: number; username: string; email: string; }
 interface Notification { id: number; message: string; is_read: boolean; created_at: string; }
@@ -41,6 +52,8 @@ function KanbanBoard() {
     const [taskModalTitle, setTaskModalTitle] = useState('');
     const [taskModalDesc, setTaskModalDesc] = useState('');
     const [taskModalAssignee, setTaskModalAssignee] = useState<number | null>(null);
+    const [taskModalPriority, setTaskModalPriority] = useState<'low' | 'medium' | 'high'>('medium');
+    const [taskModalDueDate, setTaskModalDueDate] = useState('');
 
     //State สำหรับ Modal สร้าง Tag
     const [showTagModal, setShowTagModal] = useState(false);
@@ -57,6 +70,7 @@ function KanbanBoard() {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterTagId, setFilterTagId] = useState<number | null>(null);
     const [filterMyTasks, setFilterMyTasks] = useState(false);
+    const [filterPriority, setFilterPriority] = useState<string>('all');
 
     const fetchData = async () => {
         try {
@@ -124,19 +138,30 @@ function KanbanBoard() {
     const handleRemoveTag = async (taskId: number, tagId: number) => { if (window.confirm("Remove Tag?")) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/tags/task/${taskId}/${tagId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
     const updateBoardName = async () => { if (tempBoardName.trim()) { try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/boards/${boardId}`, { name: tempBoardName }, { headers: { Authorization: `Bearer ${token}` } }); setBoardName(tempBoardName); setIsEditingBoard(false); } catch (err) { setIsEditingBoard(false); } } else setIsEditingBoard(false); };
     const updateColumnName = async (colId: number) => { if (tempColName.trim()) { setColumns(columns.map(c => c.id === colId ? { ...c, name: tempColName } : c)); setEditingColId(null); try { const token = localStorage.getItem('token'); await axios.put(`${API_URL}/columns/${colId}`, { name: tempColName }, { headers: { Authorization: `Bearer ${token}` } }); } catch (err) { fetchData(); } } else setEditingColId(null); };
-    const updateTask = async (taskId: number, newTitle?: string, newAssigneeId?: number | null, newDescription?: string) => {
+    const updateTask = async (
+        taskId: number,
+        newTitle?: string,
+        newAssigneeId?: number | null,
+        newDescription?: string,
+        newPriority?: 'low' | 'medium' | 'high',
+        newDueDate?: string | null
+    ) => {
         const task = tasks.find(t => t.id === taskId);
         if (!task) return;
         const titleToSend = newTitle !== undefined ? newTitle : task.title;
         const assigneeToSend = newAssigneeId !== undefined ? newAssigneeId : task.assignee_id;
         const descToSend = newDescription !== undefined ? newDescription : (task.description || '');
+        const priorityToSend = newPriority !== undefined ? newPriority : (task.priority || 'medium');
+        const dueDateToSend = newDueDate !== undefined ? newDueDate : (task.due_date || null);
 
         const newTasks = tasks.map(t => t.id === taskId ? {
             ...t,
             title: titleToSend,
             description: descToSend,
             assignee_id: assigneeToSend || undefined,
-            assignee_name: members.find(m => m.id === assigneeToSend)?.username
+            assignee_name: members.find(m => m.id === assigneeToSend)?.username,
+            priority: priorityToSend,
+            due_date: dueDateToSend
         } : t);
         setTasks(newTasks);
         setEditingTaskId(null);
@@ -147,7 +172,9 @@ function KanbanBoard() {
                 title: titleToSend,
                 description: descToSend,
                 assignee_id: assigneeToSend || undefined,
-                assignee_name: members.find(m => m.id === assigneeToSend)?.username
+                assignee_name: members.find(m => m.id === assigneeToSend)?.username,
+                priority: priorityToSend,
+                due_date: dueDateToSend
             });
         }
 
@@ -156,14 +183,23 @@ function KanbanBoard() {
             await axios.put(`${API_URL}/tasks/${taskId}`, {
                 title: titleToSend,
                 description: descToSend,
-                assigneeId: assigneeToSend
+                assigneeId: assigneeToSend,
+                priority: priorityToSend,
+                dueDate: dueDateToSend
             }, { headers: { Authorization: `Bearer ${token}` } });
         } catch (err) { fetchData(); }
     };
 
     const handleSaveTaskDetail = async () => {
         if (!selectedTask) return;
-        await updateTask(selectedTask.id, taskModalTitle, taskModalAssignee, taskModalDesc);
+        await updateTask(
+            selectedTask.id,
+            taskModalTitle,
+            taskModalAssignee,
+            taskModalDesc,
+            taskModalPriority,
+            taskModalDueDate ? taskModalDueDate : null
+        );
         setSelectedTask(null);
     };
     const handleDeleteColumn = async (colId: number) => { if (window.confirm('Delete Column?')) { try { const token = localStorage.getItem('token'); await axios.delete(`${API_URL}/columns/${colId}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } catch (err) { alert('Failed'); } } };
@@ -184,9 +220,11 @@ function KanbanBoard() {
             task.tags?.some(tag => tag.id === filterTagId);
         const matchesMyTasks = !filterMyTasks ||
             task.assignee_id === currentUserId;
-        return matchesSearch && matchesTag && matchesMyTasks;
+        const matchesPriority = filterPriority === 'all' ||
+            (task.priority || 'medium') === filterPriority;
+        return matchesSearch && matchesTag && matchesMyTasks && matchesPriority;
     });
-    const isFilterActive = searchQuery.trim() !== '' || filterTagId !== null || filterMyTasks;
+    const isFilterActive = searchQuery.trim() !== '' || filterTagId !== null || filterMyTasks || filterPriority !== 'all';
 
     return (
         <div className="min-h-screen w-screen bg-[#FAFAFA] p-8 font-sans overflow-x-auto relative text-gray-900 selection:bg-black selection:text-white" onClick={() => setShowNotif(false)}>
@@ -317,6 +355,22 @@ function KanbanBoard() {
                         </select>
                     )}
 
+                    {/* Priority filter dropdown */}
+                    <select
+                        value={filterPriority}
+                        onChange={(e) => setFilterPriority(e.target.value)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border outline-none cursor-pointer ${
+                            filterPriority !== 'all'
+                                ? 'bg-black text-white border-black'
+                                : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                        }`}
+                    >
+                        <option value="all" className="bg-white text-gray-900">All Priorities</option>
+                        <option value="high" className="bg-white text-gray-900">🔴 High Priority</option>
+                        <option value="medium" className="bg-white text-gray-900">🟡 Medium Priority</option>
+                        <option value="low" className="bg-white text-gray-900">🟢 Low Priority</option>
+                    </select>
+
                     {/* Filter count & clear */}
                     {isFilterActive && (
                         <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
@@ -324,7 +378,7 @@ function KanbanBoard() {
                                 Showing <strong className="text-black">{filteredTasks.length}</strong> of {tasks.length}
                             </span>
                             <button
-                                onClick={() => { setSearchQuery(''); setFilterTagId(null); setFilterMyTasks(false); }}
+                                onClick={() => { setSearchQuery(''); setFilterTagId(null); setFilterMyTasks(false); setFilterPriority('all'); }}
                                 className="text-xs text-red-500 hover:text-red-700 font-bold hover:underline"
                             >
                                 Clear
@@ -363,7 +417,7 @@ function KanbanBoard() {
                         </div>
 
                         {/* Assignee & Tags */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assignee</label>
                                 <select
@@ -384,7 +438,7 @@ function KanbanBoard() {
                                     className="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
                                     value=""
                                     onChange={(e) => {
-                                        if (e.target.value) {
+                                         if (e.target.value) {
                                             handleAddTagToTask(selectedTask.id, e.target.value);
                                         }
                                     }}
@@ -394,6 +448,73 @@ function KanbanBoard() {
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </select>
+                            </div>
+                        </div>
+
+                        {/* Priority & Due Date */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTaskModalPriority('low')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center flex items-center justify-center gap-1 ${
+                                            taskModalPriority === 'low'
+                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                        Low
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTaskModalPriority('medium')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center flex items-center justify-center gap-1 ${
+                                            taskModalPriority === 'medium'
+                                                ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-amber-300"></span>
+                                        Med
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTaskModalPriority('high')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center flex items-center justify-center gap-1 ${
+                                            taskModalPriority === 'high'
+                                                ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full bg-rose-300"></span>
+                                        High
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Due Date</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="date"
+                                        value={taskModalDueDate}
+                                        onChange={(e) => setTaskModalDueDate(e.target.value)}
+                                        className="flex-1 p-2 border border-gray-300 rounded-xl text-xs bg-white text-gray-900 focus:outline-none focus:border-black focus:ring-1 focus:ring-black"
+                                    />
+                                    {taskModalDueDate && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTaskModalDueDate('')}
+                                            className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-red-500 font-bold hover:bg-gray-100 rounded-xl transition-colors"
+                                            title="Clear due date"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -606,9 +727,25 @@ function KanbanBoard() {
                                                 {(provided, snapshot) => (
                                                     <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{ ...provided.draggableProps.style }}
                                                         className={`bg-white p-4 rounded-xl shadow-sm text-gray-800 border border-gray-200 group relative transition-all ${snapshot.isDragging ? 'shadow-lg rotate-2 scale-105 ring-2 ring-black' : 'hover:border-gray-300 hover:shadow-md'}`}>
-                                                        <div className="flex flex-wrap gap-1.5 mb-3">
+                                                        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                                                            {/* Priority Pill */}
+                                                            {task.priority === 'high' && (
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 flex items-center gap-1 shadow-xs">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> High
+                                                                </span>
+                                                            )}
+                                                            {task.priority === 'medium' && (
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 flex items-center gap-1 shadow-xs">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Med
+                                                                </span>
+                                                            )}
+                                                            {task.priority === 'low' && (
+                                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 flex items-center gap-1 shadow-xs">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Low
+                                                                </span>
+                                                            )}
                                                             {task.tags.map(tag => (
-                                                                <span key={tag.id} onClick={(e) => { e.stopPropagation(); handleRemoveTag(task.id, tag.id); }} className="text-[10px] font-bold px-2 py-1 rounded-md text-white cursor-pointer hover:opacity-80 shadow-sm" style={{ backgroundColor: tag.color }} title="Click to remove">{tag.name}</span>
+                                                                <span key={tag.id} onClick={(e) => { e.stopPropagation(); handleRemoveTag(task.id, tag.id); }} className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white cursor-pointer hover:opacity-80 shadow-sm" style={{ backgroundColor: tag.color }} title="Click to remove">{tag.name}</span>
                                                             ))}
                                                         </div>
                                                         {editingTaskId === task.id ? (
@@ -634,6 +771,8 @@ function KanbanBoard() {
                                                                         setTaskModalTitle(task.title);
                                                                         setTaskModalDesc(task.description || '');
                                                                         setTaskModalAssignee(task.assignee_id || null);
+                                                                        setTaskModalPriority(task.priority || 'medium');
+                                                                        setTaskModalDueDate(task.due_date ? task.due_date.split('T')[0] : '');
                                                                     }}
                                                                     className="cursor-pointer"
                                                                 >
@@ -659,14 +798,45 @@ function KanbanBoard() {
                                                                             {task.description}
                                                                         </p>
                                                                     )}
-                                                                    {task.assignee_name && (
-                                                                        <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-gray-100">
-                                                                            <div className="w-5 h-5 rounded-full bg-gray-900 text-white flex items-center justify-center text-[10px] font-bold">
-                                                                                {task.assignee_name[0].toUpperCase()}
+
+                                                                    <div className="flex items-center justify-between gap-2 mt-2.5 pt-2 border-t border-gray-100 text-[11px]">
+                                                                        {task.assignee_name ? (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div className="w-5 h-5 rounded-full bg-gray-900 text-white flex items-center justify-center text-[10px] font-bold">
+                                                                                    {task.assignee_name[0].toUpperCase()}
+                                                                                </div>
+                                                                                <span className="text-gray-700 font-medium truncate max-w-[90px]">{task.assignee_name}</span>
                                                                             </div>
-                                                                            <span className="text-[11px] text-gray-600 font-medium">{task.assignee_name}</span>
-                                                                        </div>
-                                                                    )}
+                                                                        ) : <span className="text-gray-400 text-[10px] italic">Unassigned</span>}
+
+                                                                        {task.due_date && (() => {
+                                                                            const due = new Date(task.due_date);
+                                                                            const today = new Date();
+                                                                            today.setHours(0, 0, 0, 0);
+                                                                            due.setHours(0, 0, 0, 0);
+                                                                            const isOverdue = due < today;
+                                                                            const isToday = due.getTime() === today.getTime();
+                                                                            const dateStr = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                                                                            return (
+                                                                                <span
+                                                                                    className={`flex items-center gap-1 font-semibold px-2 py-0.5 rounded-md text-[10px] ${
+                                                                                        isOverdue
+                                                                                            ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                                                                                            : isToday
+                                                                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                                                : 'text-gray-500 bg-gray-50'
+                                                                                    }`}
+                                                                                    title={due.toDateString()}
+                                                                                >
+                                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                                                    </svg>
+                                                                                    <span>{isOverdue ? `Overdue (${dateStr})` : isToday ? `Today` : dateStr}</span>
+                                                                                </span>
+                                                                            );
+                                                                        })()}
+                                                                    </div>
                                                                 </div>
                                                                 <button
                                                                     type="button"
